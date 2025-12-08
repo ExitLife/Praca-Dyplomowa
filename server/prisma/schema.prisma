@@ -1,0 +1,67 @@
+// To jest plik konfiguracyjny bazy danych
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Model Użytkownika (zgodnie z wymogiem rejestracji i personalizacji)
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  role      String   @default("user") // "user" lub "organizer"
+  createdAt DateTime @default(now())
+  
+  // Relacje
+  interests    Category[] // Użytkownik może mieć wiele zainteresowań
+  savedEvents  SavedEvent[] // Użytkownik może zapisać wiele wydarzeń
+  createdEvents Event[]     // Organizator może stworzyć wiele wydarzeń
+}
+
+// Model Kategorii (np. Muzyka, Teatr - do filtrowania)
+model Category {
+  id    Int    @id @default(autoincrement())
+  name  String @unique
+  
+  // Relacje
+  users  User[]  // Kategoria może być lubiana przez wielu userów
+  events Event[] // Kategoria może być przypisana do wielu wydarzeń
+}
+
+// Model Wydarzenia (serce aplikacji)
+model Event {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String
+  date        DateTime
+  location    String   // Nazwa miejsca, np. "Teatr Narodowy"
+  latitude    Float    // Współrzędne do Mapy Google
+  longitude   Float    // Współrzędne do Mapy Google
+  imageUrl    String?  // Opcjonalny link do zdjęcia
+  
+  // Relacje
+  organizerId Int
+  organizer   User     @relation(fields: [organizerId], references: [id])
+  
+  categoryId  Int
+  category    Category @relation(fields: [categoryId], references: [id])
+  
+  savedBy     SavedEvent[]
+}
+
+// Tabela łącząca zapisane wydarzenia z użytkownikami
+model SavedEvent {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  eventId   Int
+  reminderSent Boolean  @default(false)
+  user      User     @relation(fields: [userId], references: [id])
+  event     Event    @relation(fields: [eventId], references: [id])
+  
+  @@unique([userId, eventId]) // Zapobiega zapisaniu tego samego wydarzenia 2 razy
+}

@@ -1,0 +1,14 @@
+postgresql://postgres:pracadyplomowakultura@localhost:5432/kultura_app
+
+//Konto użytkownika
+
+Login: student@uczelnia.pl
+Hasło: mojetajnehaslo123
+
+Login: studenttestowy@uczelnia.pl
+Hasło: mojetajnehaslo123
+
+//Konto organizatora
+
+Login: org1@organizator.pl
+Hasło: hasloorganizatora123
