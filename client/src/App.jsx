@@ -1,56 +1,96 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
-import MapComponent from './MapComponent'; 
 import Dashboard from './Dashboard';
 import Profile from './Profile';
 import OrganizerPanel from './OrganizerPanel';
+import { useToast } from './Toast';
 
 // Komponent Sidebar (Menu boczne)
-function Sidebar({ userRole, email, onLogout }) {
+function Sidebar({ userRole, email, onLogout, isOpen, onClose }) {
   const location = useLocation();
   
   return (
-    <aside className="sidebar">
-      <div className="logo">
-        <i className="fa-solid fa-compass"></i>
-        EVENT HOP
-      </div>
+    <>
+      {/* Overlay na mobile */}
+      <div 
+        className={`sidebar-overlay ${isOpen ? 'active' : ''}`} 
+        onClick={onClose}
+      />
       
-      <nav className="nav-menu">
-        <Link to="/" className={`nav-item ${location.pathname === '/' ? 'active' : ''}`}>
-          <i className="fa-solid fa-house"></i> Strona główna
-        </Link>
-        <Link to="/profile" className={`nav-item ${location.pathname === '/profile' ? 'active' : ''}`}>
-          <i className="fa-solid fa-user"></i> Profil
-        </Link>
-        {userRole === 'organizer' && (
-          <Link to="/organizer" className={`nav-item ${location.pathname === '/organizer' ? 'active' : ''}`}>
-            <i className="fa-solid fa-plus-circle"></i> Dodaj wydarzenie
-          </Link>
-        )}
-      </nav>
-
-      <div className="nav-separator"></div>
-      
-      <div className="user-info">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-          <i className="fa-solid fa-circle-user" style={{ color: 'var(--accent-blue)', fontSize: '1.2em' }}></i>
-          {userRole === 'organizer' && <span className="organizer-badge">Organizator</span>}
+      <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
+        <div className="sidebar-header">
+          <div className="logo">
+            <i className="fa-solid fa-compass"></i>
+            EVENT HOP
+          </div>
+          <button className="sidebar-close" onClick={onClose}>
+            <i className="fa-solid fa-xmark"></i>
+          </button>
         </div>
-        <div className="user-email">{email}</div>
-      </div>
+        
+        <nav className="nav-menu">
+          <Link to="/" className={`nav-item ${location.pathname === '/' ? 'active' : ''}`} onClick={onClose}>
+            <i className="fa-solid fa-house"></i> Strona główna
+          </Link>
+          <Link to="/profile" className={`nav-item ${location.pathname === '/profile' ? 'active' : ''}`} onClick={onClose}>
+            <i className="fa-solid fa-user"></i> Profil
+          </Link>
+          {userRole === 'organizer' && (
+            <Link to="/organizer" className={`nav-item ${location.pathname === '/organizer' ? 'active' : ''}`} onClick={onClose}>
+              <i className="fa-solid fa-plus-circle"></i> Dodaj wydarzenie
+            </Link>
+          )}
+        </nav>
 
-      <div style={{ padding: '0 12px', marginTop: 'auto' }}>
-        <button onClick={onLogout} className="btn-danger" style={{ width: '100%' }}>
-          <i className="fa-solid fa-right-from-bracket" style={{ marginRight: '8px' }}></i>
-          Wyloguj się
-        </button>
+        <div className="nav-separator"></div>
+        
+        <div className="user-info">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+            <i className="fa-solid fa-circle-user" style={{ color: 'var(--accent-blue)', fontSize: '1.2em' }}></i>
+            {userRole === 'organizer' && <span className="organizer-badge">Organizator</span>}
+          </div>
+          <div className="user-email">{email}</div>
+        </div>
+
+        <div style={{ padding: '0 12px', marginTop: 'auto' }}>
+          <button onClick={onLogout} className="btn-danger" style={{ width: '100%' }}>
+            <i className="fa-solid fa-right-from-bracket" style={{ marginRight: '8px' }}></i>
+            Wyloguj się
+          </button>
+        </div>
+      </aside>
+    </>
+  );
+}
+
+// Komponent Skeleton Loading
+function SkeletonCard() {
+  return (
+    <div className="skeleton-card">
+      <div className="skeleton-header"></div>
+      <div className="skeleton-body">
+        <div className="skeleton-line short"></div>
+        <div className="skeleton-line"></div>
+        <div className="skeleton-line medium"></div>
+        <div className="skeleton-button"></div>
       </div>
-    </aside>
+    </div>
+  );
+}
+
+function SkeletonLoader({ count = 6 }) {
+  return (
+    <div className="events-grid">
+      {Array.from({ length: count }).map((_, i) => (
+        <SkeletonCard key={i} />
+      ))}
+    </div>
   );
 }
 
 function App() {
+  const toast = useToast();
+
   // --- STANY APLIKACJI ---
   const [token, setToken] = useState(localStorage.getItem('token')); 
   const [userRole, setUserRole] = useState(localStorage.getItem('role')); 
@@ -66,17 +106,29 @@ function App() {
   const [isOrganizer, setIsOrganizer] = useState(false); 
   
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // NOWE STANY
+  const [isLoading, setIsLoading] = useState(true);
+  const [filterCategory, setFilterCategory] = useState(null); // null = wszystkie
+  const [sortBy, setSortBy] = useState('date-asc'); // date-asc, date-desc, name-asc, name-desc
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [newEvent, setNewEvent] = useState({
     title: '', date: '', location: '', categoryId: '', description: '', latitude: '', longitude: ''
   });
 
   // --- FUNKCJE POMOCNICZE ---
-  const fetchEvents = useCallback(() => {
-    fetch('http://localhost:5000/api/events')
-      .then(res => res.json())
-      .then(data => setEvents(data))
-      .catch(err => console.error("Błąd wydarzeń:", err)); 
+  const fetchEvents = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch('http://localhost:5000/api/events');
+      const data = await res.json();
+      setEvents(data);
+    } catch (err) {
+      console.error("Błąd wydarzeń:", err);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
   const fetchSavedEvents = useCallback(() => {
@@ -109,6 +161,17 @@ function App() {
     }
   }, [token, fetchSavedEvents]);
 
+  // Zamknij sidebar przy zmianie rozmiaru okna
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth > 768) {
+        setSidebarOpen(false);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // --- FUNKCJE OBSŁUGI ---
   async function handleAuth(e) {
     e.preventDefault();
@@ -123,7 +186,7 @@ function App() {
       const data = await response.json();
       if (response.ok) {
         if (isRegistering) {
-            alert("Rejestracja udana! Teraz się zaloguj.");
+            toast.success("Rejestracja udana! Teraz się zaloguj.");
             setIsRegistering(false); 
         } else {
             localStorage.setItem('token', data.token);
@@ -131,9 +194,15 @@ function App() {
             setToken(data.token);
             setUserRole(data.user.role);
             setEmail(data.user.email);
+            toast.success("Zalogowano pomyślnie!");
         }
-      } else { alert("Błąd: " + data.error); }
-    } catch (error) { console.error("Błąd uwierzytelniania:", error); alert("Nie udało się połączyć z serwerem."); }
+      } else { 
+        toast.error("Błąd: " + data.error); 
+      }
+    } catch (error) { 
+      console.error("Błąd uwierzytelniania:", error); 
+      toast.error("Nie udało się połączyć z serwerem."); 
+    }
   }
 
   function handleLogout() {
@@ -144,6 +213,8 @@ function App() {
     setSavedEventIds([]);
     setEmail('');
     setPassword('');
+    setSidebarOpen(false);
+    toast.info("Wylogowano pomyślnie");
   }
 
   function toggleInterest(id) {
@@ -152,22 +223,32 @@ function App() {
   }
 
   async function savePreferences() {
-    await fetch('http://localhost:5000/api/user/interests', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ categoryIds: selectedInterests }),
-    });
-    alert("Preferencje zapisane!");
+    try {
+      await fetch('http://localhost:5000/api/user/interests', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ categoryIds: selectedInterests }),
+      });
+      toast.success("Preferencje zapisane!");
+    } catch (error) {
+      toast.error("Nie udało się zapisać preferencji");
+    }
   }
 
   async function handleAddEvent(e) {
     e.preventDefault();
-    const response = await fetch('http://localhost:5000/api/events', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(newEvent),
-    });
-    if (response.ok) {
-        alert("Wydarzenie dodane!");
-        setNewEvent({ title: '', date: '', location: '', categoryId: '', description: '', latitude: '', longitude: '' }); 
-        fetchEvents(); 
-    } else { alert("Błąd dodawania wydarzenia."); }
+    try {
+      const response = await fetch('http://localhost:5000/api/events', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(newEvent),
+      });
+      if (response.ok) {
+          toast.success("Wydarzenie zostało dodane!");
+          setNewEvent({ title: '', date: '', location: '', categoryId: '', description: '', latitude: '', longitude: '' }); 
+          fetchEvents(); 
+      } else { 
+        toast.error("Błąd dodawania wydarzenia."); 
+      }
+    } catch (error) {
+      toast.error("Nie udało się dodać wydarzenia");
+    }
   }
 
   async function toggleSaveEvent(eventId) {
@@ -175,22 +256,48 @@ function App() {
         method: 'POST', headers: { 'Authorization': `Bearer ${token}` }
     });
     if (response.ok) {
-        if (savedEventIds.includes(eventId)) setSavedEventIds(savedEventIds.filter(id => id !== eventId)); 
-        else setSavedEventIds([...savedEventIds, eventId]); 
+        if (savedEventIds.includes(eventId)) {
+          setSavedEventIds(savedEventIds.filter(id => id !== eventId));
+          toast.info("Usunięto z zapisanych");
+        } else {
+          setSavedEventIds([...savedEventIds, eventId]);
+          toast.love("Dodano do ulubionych!");
+        }
     }
   }
 
-  // --- FILTROWANIE I WYSZUKIWANIE ---
+  // --- FILTROWANIE, WYSZUKIWANIE I SORTOWANIE ---
   const now = new Date();
   
-  const searchableEvents = events.filter(event => 
+  let filteredEvents = events.filter(event => 
     new Date(event.date) >= now && 
     (event.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
      event.location.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  const recommendedEvents = searchableEvents.filter(event => selectedInterests.includes(event.categoryId));
-  const otherEvents = searchableEvents.filter(event => !selectedInterests.includes(event.categoryId));
+  // Filtrowanie po kategorii
+  if (filterCategory !== null) {
+    filteredEvents = filteredEvents.filter(event => event.categoryId === filterCategory);
+  }
+
+  // Sortowanie
+  filteredEvents.sort((a, b) => {
+    switch (sortBy) {
+      case 'date-asc':
+        return new Date(a.date) - new Date(b.date);
+      case 'date-desc':
+        return new Date(b.date) - new Date(a.date);
+      case 'name-asc':
+        return a.title.localeCompare(b.title, 'pl');
+      case 'name-desc':
+        return b.title.localeCompare(a.title, 'pl');
+      default:
+        return 0;
+    }
+  });
+
+  const recommendedEvents = filteredEvents.filter(event => selectedInterests.includes(event.categoryId));
+  const otherEvents = filteredEvents.filter(event => !selectedInterests.includes(event.categoryId));
 
   // --- WIDOK LOGOWANIA / REJESTRACJI ---
   if (!token) {
@@ -271,9 +378,27 @@ function App() {
   return (
     <Router>
       <div className="app-container">
-        <Sidebar userRole={userRole} email={email} onLogout={handleLogout} />
+        <Sidebar 
+          userRole={userRole} 
+          email={email} 
+          onLogout={handleLogout}
+          isOpen={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+        />
 
         <main className="main-content">
+          {/* Mobile header z hamburger menu */}
+          <div className="mobile-header">
+            <button className="hamburger-btn" onClick={() => setSidebarOpen(true)}>
+              <i className="fa-solid fa-bars"></i>
+            </button>
+            <div className="mobile-logo">
+              <i className="fa-solid fa-compass"></i>
+              EVENT HOP
+            </div>
+            <div style={{ width: '40px' }}></div> {/* Spacer dla wyrównania */}
+          </div>
+
           <Routes>
             {/* Strona główna */}
             <Route path="/" element={
@@ -293,22 +418,69 @@ function App() {
                   />
                 </div>
 
+                {/* FILTRY I SORTOWANIE */}
+                <div className="filters-bar">
+                  <div className="category-filters">
+                    <button 
+                      className={`filter-btn ${filterCategory === null ? 'active' : ''}`}
+                      onClick={() => setFilterCategory(null)}
+                    >
+                      Wszystkie
+                    </button>
+                    {categories.map(cat => (
+                      <button 
+                        key={cat.id}
+                        className={`filter-btn ${filterCategory === cat.id ? 'active' : ''}`}
+                        onClick={() => setFilterCategory(filterCategory === cat.id ? null : cat.id)}
+                      >
+                        {cat.name}
+                      </button>
+                    ))}
+                  </div>
+                  
+                  <div className="sort-select">
+                    <i className="fa-solid fa-arrow-up-wide-short"></i>
+                    <select 
+                      value={sortBy} 
+                      onChange={(e) => setSortBy(e.target.value)}
+                    >
+                      <option value="date-asc">Data (najwcześniej)</option>
+                      <option value="date-desc">Data (najpóźniej)</option>
+                      <option value="name-asc">Nazwa (A-Z)</option>
+                      <option value="name-desc">Nazwa (Z-A)</option>
+                    </select>
+                  </div>
+                </div>
+
                 <div className="stats-bar">
-                  <span><i className="fa-solid fa-calendar-check" style={{ marginRight: '6px' }}></i>{searchableEvents.length} wydarzeń</span>
+                  <span><i className="fa-solid fa-calendar-check" style={{ marginRight: '6px' }}></i>{filteredEvents.length} wydarzeń</span>
                   {selectedInterests.length > 0 && (
                     <span><i className="fa-solid fa-star" style={{ marginRight: '6px', color: 'var(--accent-lime)' }}></i>{recommendedEvents.length} polecanych</span>
                   )}
+                  {filterCategory !== null && (
+                    <span className="active-filter">
+                      <i className="fa-solid fa-filter" style={{ marginRight: '6px' }}></i>
+                      {categories.find(c => c.id === filterCategory)?.name}
+                      <button onClick={() => setFilterCategory(null)} className="clear-filter">
+                        <i className="fa-solid fa-xmark"></i>
+                      </button>
+                    </span>
+                  )}
                 </div>
 
-                <Dashboard 
-                  events={searchableEvents}
-                  categories={categories} 
-                  selectedInterests={selectedInterests} 
-                  recommendedEvents={recommendedEvents} 
-                  otherEvents={otherEvents} 
-                  savedEventIds={savedEventIds} 
-                  toggleSaveEvent={toggleSaveEvent} 
-                />
+                {isLoading ? (
+                  <SkeletonLoader count={6} />
+                ) : (
+                  <Dashboard 
+                    events={filteredEvents}
+                    categories={categories} 
+                    selectedInterests={selectedInterests} 
+                    recommendedEvents={recommendedEvents} 
+                    otherEvents={otherEvents} 
+                    savedEventIds={savedEventIds} 
+                    toggleSaveEvent={toggleSaveEvent} 
+                  />
+                )}
               </>
             } />
             

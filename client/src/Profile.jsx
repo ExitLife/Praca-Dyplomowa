@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import EventCard from './EventCard';
+import EventModal from './EventModal';
 
 const Profile = ({ token, categories, selectedInterests, toggleInterest, savePreferences, savedEventIds, onToggleSave }) => {
     
     const [savedEvents, setSavedEvents] = useState([]);
+    const [selectedEvent, setSelectedEvent] = useState(null);
 
     // Pobierz pełną listę ulubionych wydarzeń
     useEffect(() => {
@@ -19,6 +21,16 @@ const Profile = ({ token, categories, selectedInterests, toggleInterest, savePre
         .catch(err => console.error("Błąd pobierania ulubionych wydarzeń:", err));
 
     }, [token, savedEventIds]);
+
+    // Otwórz modal ze szczegółami
+    const handleShowDetails = (event) => {
+        setSelectedEvent(event);
+    };
+
+    // Zamknij modal
+    const handleCloseModal = () => {
+        setSelectedEvent(null);
+    };
 
     return (
         <div className="fade-in">
@@ -77,11 +89,22 @@ const Profile = ({ token, categories, selectedInterests, toggleInterest, savePre
                                 isRecommended={false} 
                                 isSaved={savedEventIds.includes(event.id)}
                                 onToggleSave={() => onToggleSave(event.id)}
+                                onShowDetails={() => handleShowDetails(event)}
                             />
                         ))}
                     </div>
                 )}
             </div>
+
+            {/* MODAL ZE SZCZEGÓŁAMI */}
+            {selectedEvent && (
+                <EventModal 
+                    event={selectedEvent}
+                    isSaved={savedEventIds.includes(selectedEvent.id)}
+                    onToggleSave={() => onToggleSave(selectedEvent.id)}
+                    onClose={handleCloseModal}
+                />
+            )}
         </div>
     );
 };

@@ -12,7 +12,7 @@ const categoryStyles = {
   'Dla dzieci': { class: 'kids', icon: 'fa-solid fa-child-reaching' },
 };
 
-function EventCard({ event, isRecommended, isSaved, onToggleSave }) {
+function EventCard({ event, isRecommended, isSaved, onToggleSave, onShowDetails }) {
     const categoryName = event.category?.name || 'Inne';
     const style = categoryStyles[categoryName] || { class: 'default', icon: 'fa-solid fa-calendar' };
     
@@ -50,7 +50,7 @@ function EventCard({ event, isRecommended, isSaved, onToggleSave }) {
                     {event.location}
                 </div>
                 
-                <button className="btn-details">
+                <button className="btn-details" onClick={onShowDetails}>
                     <i className="fa-solid fa-arrow-right" style={{ marginRight: '6px' }}></i>
                     Szczegóły
                 </button>
