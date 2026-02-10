@@ -3,10 +3,11 @@ import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react
 import Dashboard from './Dashboard';
 import Profile from './Profile';
 import OrganizerPanel from './OrganizerPanel';
+import DateFilter from './DateFilter';
 import { useToast } from './Toast';
 
 // Komponent Sidebar (Menu boczne)
-function Sidebar({ userRole, email, onLogout, isOpen, onClose }) {
+function Sidebar({ userRole, email, onLogout, isOpen, onClose, token, onShowLogin }) {
   const location = useLocation();
   
   return (
@@ -32,9 +33,11 @@ function Sidebar({ userRole, email, onLogout, isOpen, onClose }) {
           <Link to="/" className={`nav-item ${location.pathname === '/' ? 'active' : ''}`} onClick={onClose}>
             <i className="fa-solid fa-house"></i> Strona główna
           </Link>
-          <Link to="/profile" className={`nav-item ${location.pathname === '/profile' ? 'active' : ''}`} onClick={onClose}>
-            <i className="fa-solid fa-user"></i> Profil
-          </Link>
+          {token && (
+            <Link to="/profile" className={`nav-item ${location.pathname === '/profile' ? 'active' : ''}`} onClick={onClose}>
+              <i className="fa-solid fa-user"></i> Profil
+            </Link>
+          )}
           {userRole === 'organizer' && (
             <Link to="/organizer" className={`nav-item ${location.pathname === '/organizer' ? 'active' : ''}`} onClick={onClose}>
               <i className="fa-solid fa-plus-circle"></i> Dodaj wydarzenie
@@ -44,20 +47,31 @@ function Sidebar({ userRole, email, onLogout, isOpen, onClose }) {
 
         <div className="nav-separator"></div>
         
-        <div className="user-info">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-            <i className="fa-solid fa-circle-user" style={{ color: 'var(--accent-blue)', fontSize: '1.2em' }}></i>
-            {userRole === 'organizer' && <span className="organizer-badge">Organizator</span>}
-          </div>
-          <div className="user-email">{email}</div>
-        </div>
+        {token ? (
+          <>
+            <div className="user-info">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <i className="fa-solid fa-circle-user" style={{ color: 'var(--accent-blue)', fontSize: '1.2em' }}></i>
+                {userRole === 'organizer' && <span className="organizer-badge">Organizator</span>}
+              </div>
+              <div className="user-email">{email}</div>
+            </div>
 
-        <div style={{ padding: '0 12px', marginTop: 'auto' }}>
-          <button onClick={onLogout} className="btn-danger" style={{ width: '100%' }}>
-            <i className="fa-solid fa-right-from-bracket" style={{ marginRight: '8px' }}></i>
-            Wyloguj się
-          </button>
-        </div>
+            <div style={{ padding: '0 12px', marginTop: 'auto' }}>
+              <button onClick={onLogout} className="btn-danger" style={{ width: '100%' }}>
+                <i className="fa-solid fa-right-from-bracket" style={{ marginRight: '8px' }}></i>
+                Wyloguj się
+              </button>
+            </div>
+          </>
+        ) : (
+          <div style={{ padding: '0 12px', marginTop: 'auto' }}>
+            <button onClick={() => { onShowLogin(); onClose(); }} className="btn-primary" style={{ width: '100%' }}>
+              <i className="fa-solid fa-right-to-bracket" style={{ marginRight: '8px' }}></i>
+              Zaloguj się
+            </button>
+          </div>
+        )}
       </aside>
     </>
   );
@@ -111,7 +125,10 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [filterCategory, setFilterCategory] = useState(null); // null = wszystkie
   const [sortBy, setSortBy] = useState('date-asc'); // date-asc, date-desc, name-asc, name-desc
+  const [dateFrom, setDateFrom] = useState(null);
+  const [dateTo, setDateTo] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
   const [newEvent, setNewEvent] = useState({
     title: '', date: '', location: '', categoryId: '', description: '', latitude: '', longitude: ''
@@ -194,6 +211,7 @@ function App() {
             setToken(data.token);
             setUserRole(data.user.role);
             setEmail(data.user.email);
+            setShowLoginModal(false);
             toast.success("Zalogowano pomyślnie!");
         }
       } else { 
@@ -228,7 +246,7 @@ function App() {
           method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ categoryIds: selectedInterests }),
       });
       toast.success("Preferencje zapisane!");
-    } catch (error) {
+    } catch {
       toast.error("Nie udało się zapisać preferencji");
     }
   }
@@ -246,12 +264,17 @@ function App() {
       } else { 
         toast.error("Błąd dodawania wydarzenia."); 
       }
-    } catch (error) {
+    } catch {
       toast.error("Nie udało się dodać wydarzenia");
     }
   }
 
   async function toggleSaveEvent(eventId) {
+    if (!token) {
+      setShowLoginModal(true);
+      toast.info("Zaloguj się, aby zapisywać wydarzenia");
+      return;
+    }
     const response = await fetch(`http://localhost:5000/api/events/${eventId}/toggle-save`, {
         method: 'POST', headers: { 'Authorization': `Bearer ${token}` }
     });
@@ -280,6 +303,36 @@ function App() {
     filteredEvents = filteredEvents.filter(event => event.categoryId === filterCategory);
   }
 
+  // Filtrowanie po dacie (zakres z kalendarza)
+  if (dateFrom || dateTo) {
+    filteredEvents = filteredEvents.filter(event => {
+      const eventDate = new Date(event.date);
+      const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
+      
+      if (dateFrom && dateTo) {
+        const from = new Date(dateFrom.getFullYear(), dateFrom.getMonth(), dateFrom.getDate());
+        const to = new Date(dateTo.getFullYear(), dateTo.getMonth(), dateTo.getDate());
+        return eventDay >= from && eventDay <= to;
+      }
+      if (dateFrom) {
+        const from = new Date(dateFrom.getFullYear(), dateFrom.getMonth(), dateFrom.getDate());
+        return eventDay >= from;
+      }
+      return true;
+    });
+  }
+
+  // Daty wydarzeń do podświetlania w kalendarzu
+  const allEventDates = events
+    .filter(event => new Date(event.date) >= now)
+    .map(event => event.date);
+
+  // Callback do zmiany zakresu dat
+  function handleDateChange(from, to) {
+    setDateFrom(from);
+    setDateTo(to);
+  }
+
   // Sortowanie
   filteredEvents.sort((a, b) => {
     switch (sortBy) {
@@ -299,81 +352,6 @@ function App() {
   const recommendedEvents = filteredEvents.filter(event => selectedInterests.includes(event.categoryId));
   const otherEvents = filteredEvents.filter(event => !selectedInterests.includes(event.categoryId));
 
-  // --- WIDOK LOGOWANIA / REJESTRACJI ---
-  if (!token) {
-    return (
-      <div className="login-screen">
-        <div className="login-card fade-in">
-          <div className="login-logo">
-            <i className="fa-solid fa-compass"></i>
-            <h1>Event Hop</h1>
-          </div>
-          
-          <div className="login-tabs">
-            <button 
-              onClick={() => setIsRegistering(false)} 
-              className={`login-tab ${!isRegistering ? 'active' : ''}`}
-            >
-              Logowanie
-            </button>
-            <button 
-              onClick={() => setIsRegistering(true)} 
-              className={`login-tab ${isRegistering ? 'active' : ''}`}
-            >
-              Rejestracja
-            </button>
-          </div>
-
-          <form onSubmit={handleAuth}>
-            <div className="form-group">
-              <label>Email</label>
-              <input 
-                type="email" 
-                placeholder="twoj@email.pl" 
-                className="form-input"
-                value={email} 
-                onChange={e => setEmail(e.target.value)} 
-                required 
-              />
-            </div>
-            
-            <div className="form-group">
-              <label>Hasło</label>
-              <input 
-                type="password" 
-                placeholder="••••••••" 
-                className="form-input"
-                value={password} 
-                onChange={e => setPassword(e.target.value)} 
-                required 
-              />
-            </div>
-            
-            {isRegistering && (
-              <div className="checkbox-group">
-                <input 
-                  type="checkbox" 
-                  id="roleCheck" 
-                  checked={isOrganizer} 
-                  onChange={e => setIsOrganizer(e.target.checked)} 
-                />
-                <label htmlFor="roleCheck">Chcę być Organizatorem wydarzeń</label>
-              </div>
-            )}
-
-            <button type="submit" className="btn-primary" style={{ width: '100%' }}>
-              {isRegistering ? (
-                <><i className="fa-solid fa-user-plus" style={{ marginRight: '8px' }}></i>Zarejestruj się</>
-              ) : (
-                <><i className="fa-solid fa-right-to-bracket" style={{ marginRight: '8px' }}></i>Zaloguj się</>
-              )}
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
   // --- WIDOK GŁÓWNY Z ROUTEREM ---
   return (
     <Router>
@@ -384,6 +362,8 @@ function App() {
           onLogout={handleLogout}
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
+          token={token}
+          onShowLogin={() => setShowLoginModal(true)}
         />
 
         <main className="main-content">
@@ -452,6 +432,14 @@ function App() {
                   </div>
                 </div>
 
+                {/* FILTR PO DACIE - KALENDARZ */}
+                <DateFilter 
+                  dateFrom={dateFrom}
+                  dateTo={dateTo}
+                  onDateChange={handleDateChange}
+                  eventDates={allEventDates}
+                />
+
                 <div className="stats-bar">
                   <span><i className="fa-solid fa-calendar-check" style={{ marginRight: '6px' }}></i>{filteredEvents.length} wydarzeń</span>
                   {selectedInterests.length > 0 && (
@@ -462,6 +450,15 @@ function App() {
                       <i className="fa-solid fa-filter" style={{ marginRight: '6px' }}></i>
                       {categories.find(c => c.id === filterCategory)?.name}
                       <button onClick={() => setFilterCategory(null)} className="clear-filter">
+                        <i className="fa-solid fa-xmark"></i>
+                      </button>
+                    </span>
+                  )}
+                  {(dateFrom || dateTo) && (
+                    <span className="active-filter date-active-filter">
+                      <i className="fa-solid fa-calendar-days" style={{ marginRight: '6px' }}></i>
+                      Filtr daty
+                      <button onClick={() => handleDateChange(null, null)} className="clear-filter">
                         <i className="fa-solid fa-xmark"></i>
                       </button>
                     </span>
@@ -484,23 +481,38 @@ function App() {
               </>
             } />
             
-            {/* Profil */}
+            {/* Profil - tylko zalogowani */}
             <Route path="/profile" element={
-              <>
-                <div className="page-header">
-                  <h1>Twój Profil</h1>
-                  <p>Zarządzaj preferencjami i zapisanymi wydarzeniami</p>
+              token ? (
+                <>
+                  <div className="page-header">
+                    <h1>Twój Profil</h1>
+                    <p>Zarządzaj preferencjami i zapisanymi wydarzeniami</p>
+                  </div>
+                  <Profile 
+                    token={token}
+                    categories={categories} 
+                    selectedInterests={selectedInterests} 
+                    toggleInterest={toggleInterest} 
+                    savePreferences={savePreferences} 
+                    savedEventIds={savedEventIds} 
+                    onToggleSave={toggleSaveEvent}
+                  />
+                </>
+              ) : (
+                <div className="empty-state">
+                  <i className="fa-solid fa-lock"></i>
+                  <p>Zaloguj się, aby zobaczyć swój profil</p>
+                  <button 
+                    className="btn-primary" 
+                    style={{ marginTop: '16px' }}
+                    onClick={() => setShowLoginModal(true)}
+                  >
+                    <i className="fa-solid fa-right-to-bracket" style={{ marginRight: '8px' }}></i>
+                    Zaloguj się
+                  </button>
                 </div>
-                <Profile 
-                  token={token}
-                  categories={categories} 
-                  selectedInterests={selectedInterests} 
-                  toggleInterest={toggleInterest} 
-                  savePreferences={savePreferences} 
-                  savedEventIds={savedEventIds} 
-                  onToggleSave={toggleSaveEvent}
-                />
-              </>
+              )
             } />
 
             {/* Panel Organizatora */}
@@ -531,6 +543,87 @@ function App() {
           </Routes>
         </main>
       </div>
+
+      {/* MODAL LOGOWANIA */}
+      {showLoginModal && (
+        <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setShowLoginModal(false); }}>
+          <div className="login-card fade-in" style={{ position: 'relative' }}>
+            <button 
+              className="modal-close" 
+              onClick={() => setShowLoginModal(false)}
+              style={{ position: 'absolute', top: '16px', right: '16px' }}
+            >
+              <i className="fa-solid fa-xmark"></i>
+            </button>
+
+            <div className="login-logo">
+              <i className="fa-solid fa-compass"></i>
+              <h1>Event Hop</h1>
+            </div>
+            
+            <div className="login-tabs">
+              <button 
+                onClick={() => setIsRegistering(false)} 
+                className={`login-tab ${!isRegistering ? 'active' : ''}`}
+              >
+                Logowanie
+              </button>
+              <button 
+                onClick={() => setIsRegistering(true)} 
+                className={`login-tab ${isRegistering ? 'active' : ''}`}
+              >
+                Rejestracja
+              </button>
+            </div>
+
+            <form onSubmit={handleAuth}>
+              <div className="form-group">
+                <label>Email</label>
+                <input 
+                  type="email" 
+                  placeholder="twoj@email.pl" 
+                  className="form-input"
+                  value={email} 
+                  onChange={e => setEmail(e.target.value)} 
+                  required 
+                />
+              </div>
+              
+              <div className="form-group">
+                <label>Hasło</label>
+                <input 
+                  type="password" 
+                  placeholder="••••••••" 
+                  className="form-input"
+                  value={password} 
+                  onChange={e => setPassword(e.target.value)} 
+                  required 
+                />
+              </div>
+              
+              {isRegistering && (
+                <div className="checkbox-group">
+                  <input 
+                    type="checkbox" 
+                    id="roleCheckModal" 
+                    checked={isOrganizer} 
+                    onChange={e => setIsOrganizer(e.target.checked)} 
+                  />
+                  <label htmlFor="roleCheckModal">Chcę być Organizatorem wydarzeń</label>
+                </div>
+              )}
+
+              <button type="submit" className="btn-primary" style={{ width: '100%' }}>
+                {isRegistering ? (
+                  <><i className="fa-solid fa-user-plus" style={{ marginRight: '8px' }}></i>Zarejestruj się</>
+                ) : (
+                  <><i className="fa-solid fa-right-to-bracket" style={{ marginRight: '8px' }}></i>Zaloguj się</>
+                )}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </Router>
   );
 }
